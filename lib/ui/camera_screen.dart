@@ -56,32 +56,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             case EndoscopeStatus.connecting:
               content = const Center(child: CircularProgressIndicator());
             case EndoscopeStatus.noDevice:
-              content = NoDeviceView(deviceName: widget.config.displayName);
+              content = const NoDeviceView();
             case EndoscopeStatus.permissionDenied:
             case EndoscopeStatus.error:
             case EndoscopeStatus.unsupported:
-              content = NoDeviceView(deviceName: widget.config.displayName, detail: cam.message);
+              content = NoDeviceView(detail: cam.message);
           }
 
-          // Letrero de depuración (lo quitamos cuando todo funcione)
-          return Stack(
-            children: [
-              content,
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  color: Colors.black54,
-                  child: Text(
-                    'estado: ${cam.status.name}${cam.message != null ? '\n${cam.message}' : ''}',
-                    style: const TextStyle(color: Colors.yellow, fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                ),
-              ),
-            ],
-          );
+          return content;
         },
       ),
     );

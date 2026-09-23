@@ -10,9 +10,9 @@ class DeviceConfig {
   });
 }
 
-/// Endoscopio del cliente. Cambia displayName por el nombre comercial real.
+/// Endoscopio del cliente.
 const kEndoscope = DeviceConfig(
-  displayName: 'Endoscopio XXX',
+  displayName: 'Endoscopio',
   vendorId: 1878,
   productId: 1319,
 );

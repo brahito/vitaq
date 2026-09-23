@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 class NoDeviceView extends StatelessWidget {
-  final String deviceName;
   final String? detail;
 
-  const NoDeviceView({super.key, required this.deviceName, this.detail});
+  const NoDeviceView({super.key, this.detail});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +16,7 @@ class NoDeviceView extends StatelessWidget {
             Icon(Icons.videocam_off_outlined, size: 96, color: Colors.white54),
             const SizedBox(height: 24),
             Text(
-              'No se ha detectado el dispositivo $deviceName',
+              'No se ha detectado ningún endoscopio conectado',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 18),
             ),
