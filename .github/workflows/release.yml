@@ -1,0 +1,77 @@
+# Publica una APK nueva en GitHub Releases al subir un tag vX.Y.Z.
+# Las apps instaladas leen releases/latest/download/latest.json y se actualizan.
+#
+#   1. Sube la versión en pubspec.yaml (p. ej. version: 1.0.1+2 — el +N debe crecer siempre)
+#   2. git commit -am "v1.0.1" && git tag v1.0.1 && git push && git push --tags
+name: Release APK
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Leer versión de pubspec.yaml
+        id: ver
+        run: |
+          full=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
+          name=${full%%+*}
+          code=${full##*+}
+          if [ "v$name" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::El tag ${GITHUB_REF_NAME} no coincide con pubspec.yaml ($name)"; exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar clave de firma
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/vtq-release.jks
+          cat > android/key.properties <<PROPS
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEYSTORE_PASSWORD
+          keyAlias=vtq
+          storeFile=vtq-release.jks
+          PROPS
+
+      - name: Compilar APK
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --dart-define=UPDATE_URL=https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          cp build/app/outputs/flutter-apk/app-release.apk vtq.apk
+
+      - name: Generar latest.json
+        run: |
+          cat > latest.json <<JSON
+          {
+            "versionCode": ${{ steps.ver.outputs.code }},
+            "versionName": "${{ steps.ver.outputs.name }}",
+            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/vtq.apk"
+          }
+          JSON
+          cat latest.json
+
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" vtq.apk latest.json --title "${GITHUB_REF_NAME}" --generate-notes
