@@ -21,6 +21,12 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
 
   bool _started = false;
   bool _requesting = false;
+  bool _opening = false;
+  bool _reopen = false;
+
+  /// Cambia cada vez que se cierra la cámara, para descartar aperturas que
+  /// terminan después de una desconexión.
+  int _session = 0;
 
   /// Historial de estados, solo para depurar (se muestra en el letrero amarillo).
   final List<String> history = [];
@@ -156,6 +162,12 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
 
   Future<void> _openCamera() async {
     if (_controller != null) return; // ya está abierta
+    if (_opening) {
+      _reopen = true; // se reintenta cuando termine la apertura en curso
+      return;
+    }
+    _opening = true;
+    final session = _session;
 
     try {
       final controller = UvcCameraController(
@@ -163,6 +175,18 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
         resolutionPreset: UvcCameraResolutionPreset.max,
       );
       await controller.initialize();
+
+      // Se desconectó mientras abríamos: esta cámara ya no sirve.
+      if (session != _session) {
+        controller.dispose();
+        return;
+      }
+      // initialize() no lanza el error, solo deja el controlador sin inicializar.
+      if (!controller.value.isInitialized) {
+        controller.dispose();
+        _set(EndoscopeStatus.error, 'No se pudo abrir la cámara');
+        return;
+      }
       _controller = controller;
 
       _buttonSub = controller.cameraButtonEvents.listen(
@@ -171,12 +195,20 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
 
       _set(EndoscopeStatus.streaming);
     } catch (e) {
+      if (session != _session) return;
       _closeCamera();
       _set(EndoscopeStatus.error, 'No se pudo abrir la cámara: $e');
+    } finally {
+      _opening = false;
+      if (_reopen) {
+        _reopen = false;
+        if (_controller == null && _device != null) _openCamera();
+      }
     }
   }
 
   void _closeCamera() {
+    _session++;
     _buttonSub?.cancel();
     _buttonSub = null;
     _controller?.dispose();
