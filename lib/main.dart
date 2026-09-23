@@ -51,7 +51,7 @@ class _EndoscopeAppState extends State<EndoscopeApp> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: kEndoscope.displayName,
+      title: 'VitaQ',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: CameraScreen(camera: camera, config: kEndoscope),
