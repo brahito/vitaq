@@ -24,6 +24,10 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
   bool _opening = false;
   bool _reopen = false;
 
+  /// Intentos seguidos de abrir la cámara que fallaron.
+  int _failures = 0;
+  static const _maxFailures = 3;
+
   /// Cambia cada vez que se cierra la cámara, para descartar aperturas que
   /// terminan después de una desconexión.
   int _session = 0;
@@ -83,6 +87,14 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
     _device = null;
     _started = false;
     _set(EndoscopeStatus.noDevice);
+  }
+
+  @override
+  Future<void> reclaim() async {
+    if (_controller == null || _opening) return;
+    _closeCamera();
+    _set(EndoscopeStatus.connecting);
+    await _openCamera();
   }
 
   @override
@@ -184,10 +196,11 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
       // initialize() no lanza el error, solo deja el controlador sin inicializar.
       if (!controller.value.isInitialized) {
         controller.dispose();
-        _set(EndoscopeStatus.error, 'No se pudo abrir la cámara');
+        _onOpenFailed('No se pudo abrir la cámara');
         return;
       }
       _controller = controller;
+      _failures = 0;
 
       _buttonSub = controller.cameraButtonEvents.listen(
             (e) => _buttons.add(EndoscopeButtonEvent(e.button, e.state)),
@@ -197,7 +210,7 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
     } catch (e) {
       if (session != _session) return;
       _closeCamera();
-      _set(EndoscopeStatus.error, 'No se pudo abrir la cámara: $e');
+      _onOpenFailed('No se pudo abrir la cámara: $e');
     } finally {
       _opening = false;
       if (_reopen) {
@@ -205,6 +218,22 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
         if (_controller == null && _device != null) _openCamera();
       }
     }
+  }
+
+  /// Reintenta un par de veces antes de mostrar el error, por si otra app
+  /// todavía estaba soltando la cámara.
+  void _onOpenFailed(String msg) {
+    _failures++;
+    if (_failures >= _maxFailures) {
+      _failures = 0;
+      _set(EndoscopeStatus.error, msg);
+      return;
+    }
+    _set(EndoscopeStatus.connecting);
+    final session = _session;
+    Future.delayed(const Duration(seconds: 1), () {
+      if (session == _session && _device != null) _openCamera();
+    });
   }
 
   void _closeCamera() {

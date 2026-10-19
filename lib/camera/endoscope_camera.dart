@@ -26,6 +26,10 @@ abstract class EndoscopeCamera extends ChangeNotifier {
   /// Libera todo.
   Future<void> stop();
 
+  /// Vuelve a abrir la cámara para quitársela a otra app que la haya tomado
+  /// mientras esta estaba en segundo plano.
+  Future<void> reclaim();
+
   /// Widget con el video. Solo válido cuando status == streaming.
   Widget buildPreview();
 

@@ -29,10 +29,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     super.dispose();
   }
 
+  /// La app pasó a segundo plano; otra app pudo tomar la cámara mientras tanto.
+  bool _wasInBackground = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _wasInBackground = true;
     if (state == AppLifecycleState.resumed) {
       widget.camera.start(); // no hace nada si ya está arrancada
+      if (_wasInBackground) {
+        _wasInBackground = false;
+        widget.camera.reclaim(); // recupera la cámara si otra app la tomó
+      }
     }
   }
   @override
