@@ -2,6 +2,13 @@
     <!-- Auto-actualización: descargar la APK nueva y abrir el instalador -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Fotos en Pictures/VitaQ: desde Android 10 no hace falta permiso -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <application
         android:label="VitaQ"

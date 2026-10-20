@@ -30,6 +30,10 @@ abstract class EndoscopeCamera extends ChangeNotifier {
   /// mientras esta estaba en segundo plano.
   Future<void> reclaim();
 
+  /// Captura el cuadro actual y devuelve la ruta de un JPEG temporal.
+  /// Lanza una excepción si no hay video o la captura falla.
+  Future<String> takePicture();
+
   /// Widget con el video. Solo válido cuando status == streaming.
   Widget buildPreview();
 
