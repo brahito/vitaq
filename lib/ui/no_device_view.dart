@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 
 class NoDeviceView extends StatelessWidget {
+  final String title;
+  final IconData icon;
   final String? detail;
 
-  const NoDeviceView({super.key, this.detail});
+  const NoDeviceView({
+    super.key,
+    this.title = 'No se ha detectado ningún endoscopio conectado',
+    this.icon = Icons.videocam_off_outlined,
+    this.detail,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -13,10 +20,10 @@ class NoDeviceView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.videocam_off_outlined, size: 96, color: Colors.white54),
+            Icon(icon, size: 96, color: Colors.white54),
             const SizedBox(height: 24),
             Text(
-              'No se ha detectado ningún endoscopio conectado',
+              title,
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 18),
             ),

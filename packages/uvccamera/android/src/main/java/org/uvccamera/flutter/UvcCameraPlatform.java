@@ -6,6 +6,7 @@ import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbDeviceConnection;
 import android.media.MediaRecorder;
 import android.os.Handler;
 import android.os.Looper;
@@ -366,6 +367,35 @@ import io.flutter.view.TextureRegistry;
     }
 
     /**
+     * VTQ: Kicks any other app off the camera's USB interfaces.
+     * <p>
+     * Native libusb refuses to detach an interface that another process has claimed through usbfs, so if another
+     * app is already using the endoscope, opening fails. Android's {@code claimInterface(intf, true)} does detach it
+     * (USBDEVFS_DISCONNECT), so each interface is force-claimed here and then released right away, leaving it free
+     * for the native library, which opens its own connection.
+     *
+     * @param device     the USB device
+     * @param connection a connection to the device
+     */
+    private static void forceClaimInterfaces(final @NonNull UsbDevice device, final UsbDeviceConnection connection) {
+        if (connection == null) {
+            return;
+        }
+        for (int i = 0; i < device.getInterfaceCount(); i++) {
+            final var intf = device.getInterface(i);
+            try {
+                if (connection.claimInterface(intf, true)) {
+                    connection.releaseInterface(intf);
+                } else {
+                    Log.w(TAG, "forceClaimInterfaces: could not claim interface " + intf.getId());
+                }
+            } catch (final Exception e) {
+                Log.w(TAG, "forceClaimInterfaces: interface " + intf.getId(), e);
+            }
+        }
+    }
+
+    /**
      * Opens the specified UVC camera device
      *
      * @param deviceName       the name of the UVC camera device
@@ -390,6 +420,9 @@ import io.flutter.view.TextureRegistry;
 
         final var camera = new UVCCamera();
         final var cameraId = deviceCtrlBlock.getConnection().getFileDescriptor();
+
+        // VTQ: take the device away from any other app before opening it (see forceClaimInterfaces)
+        forceClaimInterfaces(device, deviceCtrlBlock.getConnection());
 
         Log.d(TAG, "openCamera: opening camera");
         try {

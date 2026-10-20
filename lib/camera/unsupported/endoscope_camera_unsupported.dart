@@ -24,5 +24,8 @@ class EndoscopeCameraUnsupported extends EndoscopeCamera {
   Future<void> stop() async {}
 
   @override
+  Future<void> reclaim() async {}
+
+  @override
   Widget buildPreview() => const SizedBox.shrink();
 }
