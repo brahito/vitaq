@@ -1,0 +1,83 @@
+# Al mergear un PR a main: sube la versión, crea el tag vX.Y.Z y publica la APK.
+#
+# - Si el PR ya trae una versión nueva en pubspec.yaml (mayor que el último tag),
+#   se publica tal cual.
+# - Si no, sube el último número (0.0.10 -> 0.0.11) y el +N en uno, y lo
+#   guarda en main con un commit "vX.Y.Z".
+# - Para mergear sin publicar, ponle al PR la etiqueta "sin-version".
+name: Version
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Un merge a la vez, para que dos PRs seguidos no saquen la misma versión.
+concurrency:
+  group: version-main
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: >-
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'sin-version')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Calcular la siguiente versión
+        id: next
+        run: |
+          full=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
+          name=${full%%+*}
+          code=${full##*+}
+          latest=$(git tag -l 'v[0-9]*' | sed 's/^v//' | sort -V | tail -n1)
+
+          # Igual o menor que el último tag: ya se publicó (o se intentó), subirla.
+          if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$name" "$latest" | sort -V | tail -n1)" = "$latest" ]; then
+            IFS=. read -r major minor patch <<< "$latest"
+            name="$major.$minor.$((patch + 1))"
+            code=$((code + 1))
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Versión a publicar: $name+$code (último tag: ${latest:-ninguno})"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Guardar la versión en main
+        if: steps.next.outputs.bump == 'true'
+        run: |
+          sed -i -E "s/^version: .*/version: ${{ steps.next.outputs.name }}+${{ steps.next.outputs.code }}/" pubspec.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "v${{ steps.next.outputs.name }}"
+          git push origin HEAD:main
+
+      - name: Crear el tag
+        id: tag
+        run: |
+          tag="v${{ steps.next.outputs.name }}"
+          git tag "$tag"
+          git push origin "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: bump
+    permissions:
+      contents: write
+    # Un tag subido por este workflow no dispara release.yml por sí solo
+    # (GitHub lo evita), así que se llama directamente.
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.bump.outputs.tag }}
+    secrets: inherit
