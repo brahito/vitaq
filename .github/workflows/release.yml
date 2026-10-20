@@ -1,6 +1,10 @@
-# Publica una APK nueva en GitHub Releases al subir un tag vX.Y.Z.
+# Publica una APK nueva en GitHub Releases.
 # Las apps instaladas leen releases/latest/download/latest.json y se actualizan.
 #
+# Normalmente no hay que hacer nada: al mergear un PR a main, version.yml sube
+# la versión, crea el tag y llama a este workflow.
+#
+# A mano (sigue funcionando):
 #   1. Sube la versión en pubspec.yaml (p. ej. version: 1.0.1+2 — el +N debe crecer siempre)
 #   2. git commit -am "v1.0.1" && git tag v1.0.1 && git push && git push --tags
 name: Release APK
@@ -8,15 +12,26 @@ name: Release APK
 on:
   push:
     tags: ['v*']
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag a publicar (vX.Y.Z), ya subido a GitHub
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: actions/setup-java@v4
         with:
@@ -34,8 +49,8 @@ jobs:
           full=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
           name=${full%%+*}
           code=${full##*+}
-          if [ "v$name" != "${GITHUB_REF_NAME}" ]; then
-            echo "::error::El tag ${GITHUB_REF_NAME} no coincide con pubspec.yaml ($name)"; exit 1
+          if [ "v$name" != "$TAG" ]; then
+            echo "::error::El tag $TAG no coincide con pubspec.yaml ($name)"; exit 1
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
@@ -66,7 +81,7 @@ jobs:
           {
             "versionCode": ${{ steps.ver.outputs.code }},
             "versionName": "${{ steps.ver.outputs.name }}",
-            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/vtq.apk"
+            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/${TAG}/vtq.apk"
           }
           JSON
           cat latest.json
@@ -74,4 +89,4 @@ jobs:
       - name: Publicar release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" vtq.apk latest.json --title "${GITHUB_REF_NAME}" --generate-notes
+        run: gh release create "$TAG" vtq.apk latest.json --title "$TAG" --generate-notes
