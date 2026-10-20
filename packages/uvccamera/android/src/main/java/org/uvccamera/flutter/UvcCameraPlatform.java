@@ -1167,7 +1167,7 @@ import io.flutter.view.TextureRegistry;
 
         final var yuvImage = new YuvImage(frameData, ImageFormat.NV21, width, height, null);
         try (final var outputFileStream = new FileOutputStream(outputFile)) {
-            if (!yuvImage.compressToJpeg(new Rect(0, 0, width, height), 95, outputFileStream)) {
+            if (!yuvImage.compressToJpeg(new Rect(0, 0, width, height), 100, outputFileStream)) {
                 throw new IOException("Failed to compress picture to JPEG");
             }
         }

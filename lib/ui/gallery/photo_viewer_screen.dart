@@ -28,6 +28,18 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late final PageController _pages = PageController(initialPage: widget.initialIndex);
   late int _index = widget.initialIndex;
 
+  // Con la foto ampliada o con dos dedos en pantalla se desactiva el
+  // deslizamiento entre fotos; si no, el PageView se queda con el gesto de
+  // pellizco y el zoom nunca llega a la foto.
+  bool _zoomed = false;
+  int _pointers = 0;
+
+  void _setPointers(int value) {
+    final before = _pointers >= 2;
+    _pointers = value < 0 ? 0 : value;
+    if (before != (_pointers >= 2)) setState(() {});
+  }
+
   @override
   void dispose() {
     _pages.dispose();
@@ -47,14 +59,28 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
           style: const TextStyle(fontSize: 16),
         ),
       ),
-      body: PageView.builder(
-        controller: _pages,
-        itemCount: widget.items.length,
-        onPageChanged: (i) => setState(() => _index = i),
-        itemBuilder: (context, i) => _PhotoPage(
-          key: ValueKey(widget.items[i].uri),
-          photo: widget.items[i],
-          photos: widget.photos,
+      body: Listener(
+        onPointerDown: (_) => _setPointers(_pointers + 1),
+        onPointerUp: (_) => _setPointers(_pointers - 1),
+        onPointerCancel: (_) => _setPointers(_pointers - 1),
+        child: PageView.builder(
+          controller: _pages,
+          physics: _zoomed || _pointers >= 2
+              ? const NeverScrollableScrollPhysics()
+              : const PageScrollPhysics(),
+          itemCount: widget.items.length,
+          onPageChanged: (i) => setState(() {
+            _index = i;
+            _zoomed = false;
+          }),
+          itemBuilder: (context, i) => _PhotoPage(
+            key: ValueKey(widget.items[i].uri),
+            photo: widget.items[i],
+            photos: widget.photos,
+            onZoomChanged: (zoomed) {
+              if (mounted && zoomed != _zoomed) setState(() => _zoomed = zoomed);
+            },
+          ),
         ),
       ),
     );
@@ -64,8 +90,14 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
 class _PhotoPage extends StatefulWidget {
   final Photo photo;
   final PhotoRepository photos;
+  final ValueChanged<bool> onZoomChanged;
 
-  const _PhotoPage({super.key, required this.photo, required this.photos});
+  const _PhotoPage({
+    super.key,
+    required this.photo,
+    required this.photos,
+    required this.onZoomChanged,
+  });
 
   @override
   State<_PhotoPage> createState() => _PhotoPageState();
@@ -73,6 +105,47 @@ class _PhotoPage extends StatefulWidget {
 
 class _PhotoPageState extends State<_PhotoPage> {
   late final Future<Uint8List> _bytes = widget.photos.read(widget.photo);
+  final _transform = TransformationController();
+  bool _zoomed = false;
+  Offset _doubleTapAt = Offset.zero;
+
+  static const _doubleTapScale = 2.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _transform.addListener(_onTransform);
+  }
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  void _onTransform() {
+    final zoomed = _transform.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed == _zoomed) return;
+    _zoomed = zoomed;
+    widget.onZoomChanged(zoomed);
+  }
+
+  /// Doble toque: amplía donde se tocó, o vuelve al tamaño normal.
+  void _toggleZoom() {
+    if (_zoomed) {
+      _transform.value = Matrix4.identity();
+      return;
+    }
+    const s = _doubleTapScale;
+    final p = _doubleTapAt;
+    // Escala s con el punto tocado fijo en pantalla (matriz por columnas).
+    _transform.value = Matrix4(
+      s, 0, 0, 0, //
+      0, s, 0, 0, //
+      0, 0, 1, 0, //
+      -p.dx * (s - 1), -p.dy * (s - 1), 0, 1,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,14 +164,20 @@ class _PhotoPageState extends State<_PhotoPage> {
                     child: PhotoThumbnail(photo: widget.photo, photos: widget.photos),
                   ),
                 )
-              : InteractiveViewer(
-                  maxScale: 6,
-                  child: Center(
-                    child: Image.memory(
-                      bytes,
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, _, _) => const _Broken(),
+              : GestureDetector(
+                  onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+                  onDoubleTap: _toggleZoom,
+                  child: InteractiveViewer(
+                    transformationController: _transform,
+                    maxScale: 8,
+                    child: Center(
+                      child: Image.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.medium,
+                        errorBuilder: (_, _, _) => const _Broken(),
+                      ),
                     ),
                   ),
                 ),

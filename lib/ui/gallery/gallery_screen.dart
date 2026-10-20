@@ -91,7 +91,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           onTap: () => _open(i),
           child: Hero(
             tag: items[i].uri,
-            child: PhotoThumbnail(photo: items[i], photos: widget.photos),
+            child: PhotoThumbnail(photo: items[i], photos: widget.photos, size: 384),
           ),
         ),
       ),

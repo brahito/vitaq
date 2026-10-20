@@ -26,33 +26,43 @@ class GalleryButton extends StatelessWidget {
       button: true,
       label: 'Abrir galería',
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onPressed,
         child: Container(
           width: 56,
           height: 56,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: Colors.black54,
+          // Borde encima de la miniatura y sin fondo: no quedan esquinas oscuras.
+          foregroundDecoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white70, width: 2),
+            border: Border.all(color: Colors.white60, width: 2),
           ),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            transitionBuilder: (child, animation) => ScaleTransition(
-              scale: Tween<double>(begin: 0.4, end: 1).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: Tween<double>(begin: 0.4, end: 1).animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+                ),
+                child: child,
               ),
-              child: child,
+              child: photo == null
+                  ? const Center(
+                      key: ValueKey('empty'),
+                      child: Icon(
+                        Icons.photo_library_outlined,
+                        color: Colors.white70,
+                      ),
+                    )
+                  : SizedBox.expand(
+                      key: ValueKey(photo.uri),
+                      child: PhotoThumbnail(
+                        photo: photo,
+                        photos: photos,
+                        size: 192,
+                      ),
+                    ),
             ),
-            child: photo == null
-                ? const Center(
-                    key: ValueKey('empty'),
-                    child: Icon(Icons.photo_library_outlined, color: Colors.white),
-                  )
-                : SizedBox.expand(
-                    key: ValueKey(photo.uri),
-                    child: PhotoThumbnail(photo: photo, photos: photos, size: 160),
-                  ),
           ),
         ),
       ),

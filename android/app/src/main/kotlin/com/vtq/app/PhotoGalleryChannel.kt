@@ -188,7 +188,7 @@ class PhotoGalleryChannel(private val context: Context, messenger: BinaryMesseng
         }
         try {
             return ByteArrayOutputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
                 out.toByteArray()
             }
         } finally {
