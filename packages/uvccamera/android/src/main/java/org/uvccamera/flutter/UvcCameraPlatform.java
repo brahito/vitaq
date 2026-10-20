@@ -29,6 +29,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.EventChannel;
@@ -1024,15 +1026,21 @@ import io.flutter.view.TextureRegistry;
             throw new IllegalStateException("Failed to create picture file", e);
         }
 
-        cameraResources.camera().setFrameCallback(
-                new UvcCameraTakePictureFrameCallback(
-                        this,
-                        cameraId,
-                        outputFile,
-                        resultHandler
-                ),
-                UVCCamera.PIXEL_FORMAT_NV21
-        );
+        try {
+            cameraResources.camera().setFrameCallback(
+                    new UvcCameraTakePictureFrameCallback(
+                            this,
+                            cameraId,
+                            outputFile,
+                            resultHandler
+                    ),
+                    UVCCamera.PIXEL_FORMAT_NV21
+            );
+        } catch (final RuntimeException e) {
+            //noinspection ResultOfMethodCallIgnored
+            outputFile.delete();
+            throw e;
+        }
     }
 
     /**
@@ -1056,80 +1064,111 @@ import io.flutter.view.TextureRegistry;
                 + ", resultHandler=" + resultHandler
         );
 
-        final var cameraResources = camerasResources.get(cameraId);
-        if (cameraResources == null) {
-            throw new IllegalArgumentException("Camera resources not found: " + cameraId);
+        // VTQ: esto corre en el hilo nativo de libuvc. Una excepción que se escape de
+        // aquí tumba el proceso, así que cualquier fallo se devuelve como error.
+        final byte[] frameData;
+        try {
+            if (camerasResources.get(cameraId) == null) {
+                throw new IllegalStateException("Camera resources not found: " + cameraId);
+            }
+            // Create copy of the frame data as the frame buffer is owned by the native side (libuvc)
+            frameData = new byte[frame.remaining()];
+            frame.get(frameData);
+        } catch (final Throwable e) {
+            Log.e(TAG, "Failed to copy taken picture frame", e);
+            mainLooperHandler.post(() -> detachTakePictureCallback(cameraId));
+            resultHandler.onResult(null, asException(e));
+            return;
         }
-
-        // Create copy of the frame data as the frame buffer is owned by the native side (libuvc)
-        final var frameData = new byte[frame.remaining()];
-        frame.get(frameData);
 
         // NOTE: The frame callback should've been detached here yet that will cause a deadlock
 
-        // Save the taken picture to the file using the worker looper
         mainLooperHandler.post(() -> {
-            // Detach the frame callback
-            cameraResources.camera().setFrameCallback(null, 0);
+            detachTakePictureCallback(cameraId);
 
+            final Size previewSize;
             try {
-                saveTakenPictureToFile(cameraId, outputFile, frameData);
-                resultHandler.onResult(outputFile, null);
-            } catch(final Exception e) {
-                Log.e(TAG, "Failed to save taken picture to file", e);
-                resultHandler.onResult(null, e);
+                final var cameraResources = camerasResources.get(cameraId);
+                if (cameraResources == null) {
+                    throw new IllegalStateException("Camera resources not found: " + cameraId);
+                }
+                previewSize = cameraResources.camera().getPreviewSize();
+                if (previewSize == null) {
+                    throw new IllegalStateException("Preview size not available: " + cameraId);
+                }
+            } catch (final Throwable e) {
+                Log.e(TAG, "Failed to read preview size for taken picture", e);
+                resultHandler.onResult(null, asException(e));
+                return;
             }
+
+            // VTQ: comprimir a JPEG tarda; fuera del hilo principal para no congelar
+            // la vista previa mientras se guarda la foto.
+            PICTURE_EXECUTOR.execute(() -> {
+                try {
+                    saveTakenPictureToFile(outputFile, frameData, previewSize.width, previewSize.height);
+                    resultHandler.onResult(outputFile, null);
+                } catch (final Throwable e) {
+                    Log.e(TAG, "Failed to save taken picture to file", e);
+                    //noinspection ResultOfMethodCallIgnored
+                    outputFile.delete();
+                    resultHandler.onResult(null, asException(e));
+                }
+            });
         });
+    }
+
+    /**
+     * VTQ: hilo de fondo para codificar las fotos a JPEG.
+     */
+    private static final ExecutorService PICTURE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        final var thread = new Thread(r, "uvccamera-picture");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * VTQ: quita el callback de captura sin fallar si la cámara ya se cerró.
+     */
+    private void detachTakePictureCallback(final int cameraId) {
+        try {
+            final var cameraResources = camerasResources.get(cameraId);
+            if (cameraResources != null) {
+                cameraResources.camera().setFrameCallback(null, 0);
+            }
+        } catch (final Throwable e) {
+            Log.w(TAG, "Failed to detach take-picture frame callback", e);
+        }
+    }
+
+    private static Exception asException(final Throwable e) {
+        return e instanceof Exception ? (Exception) e : new RuntimeException(e.toString(), e);
     }
 
     /**
      * Saves the taken picture to the specified file
      *
-     * @param cameraId   the camera ID
      * @param outputFile the output file
-     * @param frameData  the frame data
+     * @param frameData  the frame data (NV21)
+     * @param width      the frame width
+     * @param height     the frame height
      */
-    private void saveTakenPictureToFile(final int cameraId, final File outputFile, final byte[] frameData) {
+    private void saveTakenPictureToFile(
+            final File outputFile,
+            final byte[] frameData,
+            final int width,
+            final int height
+    ) throws IOException {
         Log.v(TAG, "saveTakenPictureToFile"
-                + ": cameraId=" + cameraId
-                + ", outputFile=" + outputFile
+                + ": outputFile=" + outputFile
                 + ", frameData=[... " + frameData.length + " byte(s) ...]"
+                + ", size=" + width + "x" + height
         );
 
-        final var cameraResources = camerasResources.get(cameraId);
-        if (cameraResources == null) {
-            throw new IllegalArgumentException("Camera resources not found: " + cameraId);
-        }
-
-        final var previewSize = cameraResources.camera().getPreviewSize();
-        final var yuvImage = new YuvImage(
-                frameData,
-                ImageFormat.NV21,
-                previewSize.width,
-                previewSize.height,
-                null
-        );
-
-        final FileOutputStream outputFileStream;
-        try {
-            outputFileStream = new FileOutputStream(outputFile);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to open picture file output stream", e);
-        }
-
-        try {
-            yuvImage.compressToJpeg(
-                    new Rect(0, 0, previewSize.width, previewSize.height),
-                    100,
-                    outputFileStream
-            );
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to write picture file", e);
-        } finally {
-            try {
-                outputFileStream.close();
-            } catch (IOException e) {
-                Log.w(TAG, "Failed to close picture file output stream", e);
+        final var yuvImage = new YuvImage(frameData, ImageFormat.NV21, width, height, null);
+        try (final var outputFileStream = new FileOutputStream(outputFile)) {
+            if (!yuvImage.compressToJpeg(new Rect(0, 0, width, height), 95, outputFileStream)) {
+                throw new IOException("Failed to compress picture to JPEG");
             }
         }
     }

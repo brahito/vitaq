@@ -249,6 +249,21 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
     _controller = null;
   }
 
+  // ---------------------------------------------------------------- fotos
+
+  /// Si el video se congela, el cuadro nunca llega: no esperar para siempre.
+  static const _pictureTimeout = Duration(seconds: 5);
+
+  @override
+  Future<String> takePicture() async {
+    final c = _controller;
+    if (c == null || _status != EndoscopeStatus.streaming) {
+      throw StateError('El endoscopio no está transmitiendo');
+    }
+    final file = await c.takePicture().timeout(_pictureTimeout);
+    return file.path;
+  }
+
   @override
   Widget buildPreview() {
     final c = _controller;

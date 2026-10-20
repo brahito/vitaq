@@ -13,6 +13,8 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+    private var gallery: PhotoGalleryChannel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Mientras la app esté abierta la pantalla no se apaga.
@@ -21,6 +23,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        gallery = PhotoGalleryChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vtq/updater")
             .setMethodCallHandler { call, result ->
@@ -32,6 +36,12 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        gallery?.dispose()
+        gallery = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun versionCode(): Long {
