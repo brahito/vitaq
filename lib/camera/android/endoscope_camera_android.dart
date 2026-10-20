@@ -135,6 +135,7 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
       case UvcCameraDeviceEventType.detached:
         _closeCamera();
         _device = null; // el sondeo vuelve a buscar
+        _failures = 0;
         _set(EndoscopeStatus.noDevice);
     }
   }
@@ -226,7 +227,11 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
     _failures++;
     if (_failures >= _maxFailures) {
       _failures = 0;
-      _set(EndoscopeStatus.error, msg);
+      debugPrint('[Endoscope] $msg');
+      // Ya no se reintenta solo: hay que desconectar y reconectar el endoscopio.
+      _set(EndoscopeStatus.error,
+          'Puede que otra app esté usando el endoscopio. '
+          'Ciérrala, desconecta el endoscopio y vuelve a conectarlo.');
       return;
     }
     _set(EndoscopeStatus.connecting);

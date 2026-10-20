@@ -65,8 +65,13 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               content = const Center(child: CircularProgressIndicator());
             case EndoscopeStatus.noDevice:
               content = const NoDeviceView();
-            case EndoscopeStatus.permissionDenied:
             case EndoscopeStatus.error:
+              content = NoDeviceView(
+                title: 'No se pudo abrir el endoscopio',
+                icon: Icons.warning_amber_rounded,
+                detail: cam.message,
+              );
+            case EndoscopeStatus.permissionDenied:
             case EndoscopeStatus.unsupported:
               content = NoDeviceView(detail: cam.message);
           }
