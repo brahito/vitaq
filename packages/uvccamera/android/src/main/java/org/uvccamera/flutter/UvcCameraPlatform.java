@@ -1165,11 +1165,28 @@ import io.flutter.view.TextureRegistry;
                 + ", size=" + width + "x" + height
         );
 
+        // VTQ: libuvccamera entrega el croma en orden U,V (NV12) aunque se le pida NV21.
+        // Sin este cambio el azul sale rojo/naranja y la piel sale azul.
+        swapChroma(frameData, width, height);
+
         final var yuvImage = new YuvImage(frameData, ImageFormat.NV21, width, height, null);
         try (final var outputFileStream = new FileOutputStream(outputFile)) {
             if (!yuvImage.compressToJpeg(new Rect(0, 0, width, height), 100, outputFileStream)) {
                 throw new IOException("Failed to compress picture to JPEG");
             }
+        }
+    }
+
+    /**
+     * VTQ: intercambia los bytes U y V del plano de croma entrelazado (NV12 a NV21).
+     */
+    private static void swapChroma(final byte[] data, final int width, final int height) {
+        final int start = width * height;
+        final int end = Math.min(data.length, start + (width * height) / 2);
+        for (int i = start; i + 1 < end; i += 2) {
+            final byte u = data[i];
+            data[i] = data[i + 1];
+            data[i + 1] = u;
         }
     }
 
