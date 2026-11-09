@@ -31,5 +31,20 @@ class EndoscopeCameraUnsupported extends EndoscopeCamera {
       Future.error(UnsupportedError('Soporte para $platformName aún no implementado'));
 
   @override
+  Future<String> startRecording() => _unsupported();
+
+  @override
+  Future<void> pauseRecording() => _unsupported();
+
+  @override
+  Future<void> resumeRecording() => _unsupported();
+
+  @override
+  Future<void> stopRecording() => _unsupported();
+
+  Future<T> _unsupported<T>() =>
+      Future.error(UnsupportedError('Soporte para $platformName aún no implementado'));
+
+  @override
   Widget buildPreview() => const SizedBox.shrink();
 }

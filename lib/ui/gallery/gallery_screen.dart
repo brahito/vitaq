@@ -5,7 +5,7 @@ import '../../gallery/photo_repository.dart';
 import 'photo_thumbnail.dart';
 import 'photo_viewer_screen.dart';
 
-/// Fotos tomadas con VitaQ (álbum Pictures/VitaQ del teléfono).
+/// Fotos y videos tomados con VitaQ (álbum Pictures/VitaQ del teléfono).
 class GalleryScreen extends StatefulWidget {
   final PhotoRepository photos;
 
@@ -55,7 +55,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: Text(items == null ? 'Fotos' : 'Fotos (${items.length})'),
+        title: Text(items == null ? 'Galería' : 'Galería (${items.length})'),
       ),
       body: _body(items),
     );
@@ -65,7 +65,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (items == null && _error != null) {
       return _Message(
         icon: Icons.error_outline,
-        text: 'No se pudieron cargar las fotos',
+        text: 'No se pudo cargar la galería',
         action: TextButton(onPressed: _load, child: const Text('Reintentar')),
       );
     }
@@ -73,7 +73,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (items.isEmpty) {
       return const _Message(
         icon: Icons.photo_library_outlined,
-        text: 'Aún no hay fotos.\nToca el botón blanco o toca dos veces la imagen para tomar una.',
+        text: 'Aún no hay fotos ni videos.\nToca el botón blanco o toca dos veces la imagen para tomar '
+            'una foto, o el botón de la cámara para grabar.',
       );
     }
 

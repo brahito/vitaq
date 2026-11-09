@@ -6,8 +6,10 @@ import '../../gallery/photo.dart';
 import '../../gallery/photo_repository.dart';
 import '../format.dart';
 import 'photo_thumbnail.dart';
+import 'video_page.dart';
 
-/// Foto a pantalla completa. Se desliza entre fotos y se hace zoom con dos dedos.
+/// Foto o video a pantalla completa. Se desliza entre ellos; en las fotos se
+/// hace zoom con dos dedos y los videos se reproducen al tocarlos.
 class PhotoViewerScreen extends StatefulWidget {
   final PhotoRepository photos;
   final List<Photo> items;
@@ -73,14 +75,20 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
             _index = i;
             _zoomed = false;
           }),
-          itemBuilder: (context, i) => _PhotoPage(
-            key: ValueKey(widget.items[i].uri),
-            photo: widget.items[i],
-            photos: widget.photos,
-            onZoomChanged: (zoomed) {
-              if (mounted && zoomed != _zoomed) setState(() => _zoomed = zoomed);
-            },
-          ),
+          itemBuilder: (context, i) => widget.items[i].isVideo
+              ? VideoPage(
+                  key: ValueKey(widget.items[i].uri),
+                  video: widget.items[i],
+                  photos: widget.photos,
+                )
+              : _PhotoPage(
+                  key: ValueKey(widget.items[i].uri),
+                  photo: widget.items[i],
+                  photos: widget.photos,
+                  onZoomChanged: (zoomed) {
+                    if (mounted && zoomed != _zoomed) setState(() => _zoomed = zoomed);
+                  },
+                ),
         ),
       ),
     );

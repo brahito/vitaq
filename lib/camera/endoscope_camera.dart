@@ -34,6 +34,20 @@ abstract class EndoscopeCamera extends ChangeNotifier {
   /// Lanza una excepción si no hay video o la captura falla.
   Future<String> takePicture();
 
+  /// Empieza a grabar video y devuelve la ruta del MP4 temporal donde se graba.
+  /// Lanza una excepción si no hay video o no se pudo empezar.
+  Future<String> startRecording();
+
+  /// Pausa la grabación en curso; lo que pase mientras tanto no queda en el video.
+  Future<void> pauseRecording();
+
+  /// Retoma una grabación pausada.
+  Future<void> resumeRecording();
+
+  /// Termina la grabación: el MP4 de [startRecording] queda listo para guardar.
+  /// Si el endoscopio se desconecta grabando, el MP4 se cierra solo.
+  Future<void> stopRecording();
+
   /// Widget con el video. Solo válido cuando status == streaming.
   Widget buildPreview();
 

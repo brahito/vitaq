@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'camera/endoscope_camera_factory.dart';
 import 'capture/photo_capture_controller.dart';
+import 'capture/video_recording_controller.dart';
 import 'core/app_updater.dart';
 import 'core/device_config.dart';
 import 'gallery/photo_repository_factory.dart';
@@ -38,7 +39,9 @@ class EndoscopeApp extends StatefulWidget {
 
 class _EndoscopeAppState extends State<EndoscopeApp> with WidgetsBindingObserver {
   late final camera = createEndoscopeCamera(kEndoscope);
-  late final capture = PhotoCaptureController(camera: camera, photos: createPhotoRepository());
+  late final photos = createPhotoRepository();
+  late final capture = PhotoCaptureController(camera: camera, photos: photos);
+  late final recorder = VideoRecordingController(camera: camera, photos: photos);
   final updater = AppUpdater();
 
   @override
@@ -52,6 +55,7 @@ class _EndoscopeAppState extends State<EndoscopeApp> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     updater.dispose();
+    recorder.dispose();
     capture.dispose();
     super.dispose();
   }
@@ -67,7 +71,7 @@ class _EndoscopeAppState extends State<EndoscopeApp> with WidgetsBindingObserver
       title: 'VitaQ',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
-      home: CameraScreen(camera: camera, config: kEndoscope, capture: capture),
+      home: CameraScreen(camera: camera, config: kEndoscope, capture: capture, recorder: recorder),
       builder: (context, child) => Stack(
         children: [child!, UpdateBanner(updater: updater)],
       ),

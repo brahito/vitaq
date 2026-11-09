@@ -14,8 +14,17 @@ class FakeCamera extends EndoscopeCamera {
   Object? error;
   int calls = 0;
 
+  EndoscopeStatus currentStatus = EndoscopeStatus.streaming;
+  final recordCalls = <String>[];
+  Object? recordError;
+
+  void setStatus(EndoscopeStatus s) {
+    currentStatus = s;
+    notifyListeners();
+  }
+
   @override
-  EndoscopeStatus get status => EndoscopeStatus.streaming;
+  EndoscopeStatus get status => currentStatus;
   @override
   String? get message => null;
   @override
@@ -30,6 +39,31 @@ class FakeCamera extends EndoscopeCamera {
   Widget buildPreview() => const SizedBox();
 
   @override
+  Future<String> startRecording() async {
+    recordCalls.add('start');
+    if (recordError != null) throw recordError!;
+    return '/cache/REC${recordCalls.length}.mp4';
+  }
+
+  @override
+  Future<void> pauseRecording() async {
+    recordCalls.add('pause');
+    if (recordError != null) throw recordError!;
+  }
+
+  @override
+  Future<void> resumeRecording() async {
+    recordCalls.add('resume');
+    if (recordError != null) throw recordError!;
+  }
+
+  @override
+  Future<void> stopRecording() async {
+    recordCalls.add('stop');
+    if (recordError != null) throw recordError!;
+  }
+
+  @override
   Future<String> takePicture() {
     calls++;
     if (error != null) return Future.error(error!);
@@ -41,13 +75,25 @@ class FakeCamera extends EndoscopeCamera {
 class FakeRepository implements PhotoRepository {
   final saved = <Photo>[];
   Object? saveError;
+
+  /// Cuántas veces más falla save antes de funcionar (video aún sin cerrar).
+  int failSaves = 0;
   int thumbnailCalls = 0;
   bool failThumbnail = false;
 
   @override
   Future<Photo> save(String tempPath, String name) async {
     if (saveError != null) throw saveError!;
-    final photo = Photo(uri: 'content://$name', name: name, takenAt: DateTime(2026));
+    if (failSaves > 0) {
+      failSaves--;
+      throw StateError('El video está incompleto');
+    }
+    final photo = Photo(
+      uri: 'content://$name',
+      name: name,
+      takenAt: DateTime(2026),
+      isVideo: name.endsWith('.mp4'),
+    );
     saved.insert(0, photo);
     return photo;
   }

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../../gallery/photo.dart';
 import '../../gallery/photo_repository.dart';
+import '../format.dart';
 
-/// Miniatura de una foto del álbum. Si no carga, muestra un ícono en su lugar.
+/// Miniatura de una foto o video del álbum. Si no carga, muestra un ícono en su
+/// lugar. Los videos llevan encima un ícono de reproducir y su duración.
 class PhotoThumbnail extends StatefulWidget {
   final Photo photo;
   final PhotoRepository photos;
@@ -36,6 +38,33 @@ class _PhotoThumbnailState extends State<PhotoThumbnail> {
 
   @override
   Widget build(BuildContext context) {
+    final image = _image();
+    if (!widget.photo.isVideo) return image;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        image,
+        const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 36)),
+        if (widget.photo.duration > Duration.zero)
+          Positioned(
+            right: 4,
+            bottom: 4,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                child: Text(
+                  formatDuration(widget.photo.duration),
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _image() {
     return FutureBuilder<Uint8List>(
       future: _bytes,
       builder: (context, snap) {

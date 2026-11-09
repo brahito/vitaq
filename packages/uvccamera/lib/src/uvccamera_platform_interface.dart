@@ -95,6 +95,14 @@ abstract class UvcCameraPlatformInterface extends PlatformInterface {
     throw UnimplementedError('stopVideoRecording() has not been implemented.');
   }
 
+  Future<void> pauseVideoRecording(int cameraId) {
+    throw UnimplementedError('pauseVideoRecording() has not been implemented.');
+  }
+
+  Future<void> resumeVideoRecording(int cameraId) {
+    throw UnimplementedError('resumeVideoRecording() has not been implemented.');
+  }
+
   Stream<UvcCameraDeviceEvent> get deviceEventStream {
     throw UnimplementedError('deviceEventStream has not been implemented.');
   }

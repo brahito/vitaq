@@ -31,6 +31,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.EventChannel;
@@ -582,21 +584,22 @@ import io.flutter.view.TextureRegistry;
         cameraResources.statusEventChannel().setStreamHandler(null);
         cameraResources.errorEventChannel().setStreamHandler(null);
 
-        Log.d(TAG, "closeCamera: releasing media recorder");
-        try {
-            final var mediaRecorder = cameraResources.mediaRecorder();
-            mediaRecorder.reset();
-            mediaRecorder.release();
-            Log.d(TAG, "closeCamera: media recorder released");
-        } catch (final Exception e) {
-            Log.w(TAG, "closeCamera: failed to release media recorder", e);
-        }
-
         // VTQ: el apagado nativo va en un hilo aparte. Si el endoscopio se desconecta
         // mientras transmite, USBMonitor cierra el descriptor USB antes de avisarnos y
         // UVCCamera.stopPreview() puede quedarse esperando para siempre (pthread_join del
         // hilo de preview). Hecho en el hilo principal, eso congelaba la app (ANR).
         final var teardownThread = new Thread(() -> {
+            // VTQ: si se estaba grabando (p. ej. se desconectó el endoscopio), se cierra
+            // el MP4 en vez de descartarlo, para que la app pueda guardar lo grabado.
+            Log.d(TAG, "closeCamera: releasing media recorder");
+            try {
+                RECORDER_EXECUTOR.submit(() -> releaseRecorder(cameraResources))
+                        .get(RECORDER_CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                Log.d(TAG, "closeCamera: media recorder released");
+            } catch (final Exception e) {
+                Log.w(TAG, "closeCamera: failed to release media recorder", e);
+            }
+
             Log.d(TAG, "closeCamera: stopping preview");
             try {
                 cameraResources.camera().stopPreview();
@@ -1231,6 +1234,8 @@ import io.flutter.view.TextureRegistry;
         mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
         mediaRecorder.setVideoSize(frameWidth, frameHeight);
         mediaRecorder.setVideoFrameRate(30);
+        // VTQ: sin esto MediaRecorder usa un bitrate muy bajo y el video sale borroso.
+        mediaRecorder.setVideoEncodingBitRate(videoBitRate(frameWidth, frameHeight));
         mediaRecorder.setOutputFile(outputFile.getAbsolutePath());
 
         try {
@@ -1245,8 +1250,16 @@ import io.flutter.view.TextureRegistry;
             final var mediaRecorderSurface = mediaRecorder.getSurface();
             cameraResources.camera().startCapture(mediaRecorderSurface);
             mediaRecorder.start();
+            recordingCameras.add(cameraId);
         } catch (final Exception e) {
+            try {
+                cameraResources.camera().stopCapture();
+            } catch (final Exception ignored) {
+                // No llegó a arrancar.
+            }
             mediaRecorder.reset();
+            //noinspection ResultOfMethodCallIgnored
+            outputFile.delete();
 
             throw new IllegalStateException("Failed to start capture", e);
         }
@@ -1255,24 +1268,139 @@ import io.flutter.view.TextureRegistry;
     }
 
     /**
-     * Stops video recording for the specified camera
+     * Stops video recording for the specified camera. VTQ: corre en un hilo aparte
+     * (cerrar el MP4 tarda y stopCapture puede bloquearse si el endoscopio se
+     * desconecta) y avisa por [done] en el hilo principal: null si salió bien.
      *
      * @param cameraId the camera ID
+     * @param done     called on the main thread with the error, or null
      */
-    public void stopVideoRecording(final int cameraId) {
+    public void stopVideoRecording(final int cameraId, final Consumer<Exception> done) {
         Log.v(TAG, "stopVideoRecording: cameraId=" + cameraId);
+        runOnRecorder(done, () -> {
+            final var cameraResources = recorderResources(cameraId);
+            if (!recordingCameras.remove(cameraId)) {
+                throw new IllegalStateException("Camera is not recording: " + cameraId);
+            }
+            try {
+                cameraResources.camera().stopCapture();
+            } catch (final Exception e) {
+                Log.w(TAG, "stopVideoRecording: failed to stop capture", e);
+            }
+            final var mediaRecorder = cameraResources.mediaRecorder();
+            try {
+                // Lanza si no llegó ningún cuadro: el MP4 queda vacío.
+                mediaRecorder.stop();
+            } finally {
+                mediaRecorder.reset();
+            }
+        });
+    }
 
+    /**
+     * VTQ: pausa la grabación (MediaRecorder.pause, Android 7+).
+     */
+    public void pauseVideoRecording(final int cameraId, final Consumer<Exception> done) {
+        Log.v(TAG, "pauseVideoRecording: cameraId=" + cameraId);
+        runOnRecorder(done, () -> recordingRecorder(cameraId).pause());
+    }
+
+    /**
+     * VTQ: retoma una grabación pausada.
+     */
+    public void resumeVideoRecording(final int cameraId, final Consumer<Exception> done) {
+        Log.v(TAG, "resumeVideoRecording: cameraId=" + cameraId);
+        runOnRecorder(done, () -> recordingRecorder(cameraId).resume());
+    }
+
+    private UvcCameraResources recorderResources(final int cameraId) {
         final var cameraResources = camerasResources.get(cameraId);
         if (cameraResources == null) {
             throw new IllegalArgumentException("Camera resources not found: " + cameraId);
         }
-
-        cameraResources.camera().stopCapture();
-
-        final var mediaRecorder = cameraResources.mediaRecorder();
-        mediaRecorder.stop();
-        mediaRecorder.reset();
+        return cameraResources;
     }
+
+    private MediaRecorder recordingRecorder(final int cameraId) {
+        final var cameraResources = recorderResources(cameraId);
+        if (!recordingCameras.contains(cameraId)) {
+            throw new IllegalStateException("Camera is not recording: " + cameraId);
+        }
+        return cameraResources.mediaRecorder();
+    }
+
+    private interface RecorderWork {
+        void run() throws Exception;
+    }
+
+    private void runOnRecorder(final Consumer<Exception> done, final RecorderWork work) {
+        try {
+            RECORDER_EXECUTOR.execute(() -> {
+                Exception error = null;
+                try {
+                    work.run();
+                } catch (final Throwable e) {
+                    Log.e(TAG, "video recording error", e);
+                    error = asException(e);
+                }
+                final var result = error;
+                mainLooperHandler.post(() -> done.accept(result));
+            });
+        } catch (final Throwable e) {
+            done.accept(asException(e));
+        }
+    }
+
+    /**
+     * VTQ: cierra (y termina, si estaba grabando) el MediaRecorder de una cámara
+     * que se está cerrando. Corre en [RECORDER_EXECUTOR].
+     */
+    private void releaseRecorder(final UvcCameraResources cameraResources) {
+        final var mediaRecorder = cameraResources.mediaRecorder();
+        if (recordingCameras.remove(cameraResources.cameraId())) {
+            Log.d(TAG, "closeCamera: finishing interrupted video recording");
+            try {
+                cameraResources.camera().stopCapture();
+            } catch (final Exception e) {
+                Log.w(TAG, "closeCamera: failed to stop capture", e);
+            }
+            try {
+                mediaRecorder.stop();
+            } catch (final Exception e) {
+                Log.w(TAG, "closeCamera: failed to finish video recording", e);
+            }
+        }
+        try {
+            mediaRecorder.reset();
+        } catch (final Exception e) {
+            Log.w(TAG, "closeCamera: failed to reset media recorder", e);
+        }
+        mediaRecorder.release();
+    }
+
+    /**
+     * VTQ: unos 0.25 bits por píxel a 30 fps (≈3.9 Mbps a 720x720).
+     */
+    private static int videoBitRate(final int width, final int height) {
+        final long bitRate = (long) width * height * 30 / 4;
+        return (int) Math.max(2_000_000L, Math.min(12_000_000L, bitRate));
+    }
+
+    /**
+     * VTQ: cámaras con una grabación en curso.
+     */
+    private final java.util.Set<Integer> recordingCameras = ConcurrentHashMap.newKeySet();
+
+    /**
+     * VTQ: un solo hilo para todo lo que toca los MediaRecorder, en orden.
+     */
+    private static final ExecutorService RECORDER_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        final var thread = new Thread(r, "uvccamera-recorder");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private static final long RECORDER_CLOSE_TIMEOUT_SECONDS = 5;
 
     /**
      * Finds the UVC camera device by name

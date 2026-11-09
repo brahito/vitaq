@@ -39,6 +39,8 @@ dependencies:
   uvccamera:
     path: packages/uvccamera
   permission_handler: ^13.0.2
+  # Reproduce en la galería los videos grabados.
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:
