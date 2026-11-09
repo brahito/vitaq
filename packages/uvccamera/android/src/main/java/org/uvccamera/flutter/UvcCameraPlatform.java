@@ -1029,16 +1029,26 @@ import io.flutter.view.TextureRegistry;
             throw new IllegalStateException("Failed to create picture file", e);
         }
 
+        final var pictureCallback = new UvcCameraTakePictureFrameCallback(
+                this,
+                cameraId,
+                outputFile,
+                resultHandler
+        );
+
+        // VTQ: grabando, la foto sale del callback que ya está puesto para el video.
+        final var tap = frameTaps.get(cameraId);
+        if (tap != null) {
+            if (!tap.request(pictureCallback)) {
+                //noinspection ResultOfMethodCallIgnored
+                outputFile.delete();
+                throw new IllegalStateException("A picture is already being taken");
+            }
+            return;
+        }
+
         try {
-            cameraResources.camera().setFrameCallback(
-                    new UvcCameraTakePictureFrameCallback(
-                            this,
-                            cameraId,
-                            outputFile,
-                            resultHandler
-                    ),
-                    UVCCamera.PIXEL_FORMAT_NV21
-            );
+            cameraResources.camera().setFrameCallback(pictureCallback, UVCCamera.PIXEL_FORMAT_NV21);
         } catch (final RuntimeException e) {
             //noinspection ResultOfMethodCallIgnored
             outputFile.delete();
@@ -1134,6 +1144,8 @@ import io.flutter.view.TextureRegistry;
      * VTQ: quita el callback de captura sin fallar si la cámara ya se cerró.
      */
     private void detachTakePictureCallback(final int cameraId) {
+        // Grabando, el callback es el de la grabación y se queda puesto.
+        if (frameTaps.containsKey(cameraId)) return;
         try {
             final var cameraResources = camerasResources.get(cameraId);
             if (cameraResources != null) {
@@ -1247,6 +1259,12 @@ import io.flutter.view.TextureRegistry;
         }
 
         try {
+            // VTQ: el callback de cuadros se pone antes de empezar a grabar y no se
+            // toca hasta terminar (ver UvcCameraRecordingFrameTap).
+            final var tap = new UvcCameraRecordingFrameTap();
+            cameraResources.camera().setFrameCallback(tap, UVCCamera.PIXEL_FORMAT_NV21);
+            frameTaps.put(cameraId, tap);
+
             final var mediaRecorderSurface = mediaRecorder.getSurface();
             cameraResources.camera().startCapture(mediaRecorderSurface);
             mediaRecorder.start();
@@ -1257,6 +1275,7 @@ import io.flutter.view.TextureRegistry;
             } catch (final Exception ignored) {
                 // No llegó a arrancar.
             }
+            removeFrameTap(cameraResources);
             mediaRecorder.reset();
             //noinspection ResultOfMethodCallIgnored
             outputFile.delete();
@@ -1287,6 +1306,7 @@ import io.flutter.view.TextureRegistry;
             } catch (final Exception e) {
                 Log.w(TAG, "stopVideoRecording: failed to stop capture", e);
             }
+            removeFrameTap(cameraResources);
             final var mediaRecorder = cameraResources.mediaRecorder();
             try {
                 // Lanza si no llegó ningún cuadro: el MP4 queda vacío.
@@ -1364,6 +1384,7 @@ import io.flutter.view.TextureRegistry;
             } catch (final Exception e) {
                 Log.w(TAG, "closeCamera: failed to stop capture", e);
             }
+            removeFrameTap(cameraResources);
             try {
                 mediaRecorder.stop();
             } catch (final Exception e) {
@@ -1377,6 +1398,29 @@ import io.flutter.view.TextureRegistry;
         }
         mediaRecorder.release();
     }
+
+    /**
+     * VTQ: quita el callback de la grabación (ya sin capturar) y avisa a una foto
+     * pendiente que no va a llegar.
+     */
+    private void removeFrameTap(final UvcCameraResources cameraResources) {
+        final var tap = frameTaps.remove(cameraResources.cameraId());
+        if (tap == null) return;
+        try {
+            cameraResources.camera().setFrameCallback(null, 0);
+        } catch (final Exception e) {
+            Log.w(TAG, "Failed to detach recording frame callback", e);
+        }
+        final var picture = tap.cancel();
+        if (picture instanceof UvcCameraTakePictureFrameCallback p) {
+            p.fail(new IllegalStateException("Video recording stopped before the picture was taken"));
+        }
+    }
+
+    /**
+     * VTQ: callbacks de cuadros de las grabaciones en curso.
+     */
+    private final Map<Integer, UvcCameraRecordingFrameTap> frameTaps = new ConcurrentHashMap<>();
 
     /**
      * VTQ: unos 0.25 bits por píxel a 30 fps (≈3.9 Mbps a 720x720).
