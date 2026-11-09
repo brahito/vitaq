@@ -4,14 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../capture/photo_capture_controller.dart';
+import '../../capture/video_recording_controller.dart';
 
-/// Aviso visual y táctil al tomar una foto: un destello breve sobre el video,
+/// Aviso visual y táctil al tomar una foto (y al empezar o guardar un video): un destello breve sobre el video,
 /// una vibración corta y un letrero pequeño que se va solo. No bloquea nada:
 /// todo deja pasar los toques y no hay que cerrarlo.
 class CaptureFeedback extends StatefulWidget {
   final PhotoCaptureController controller;
+  final VideoRecordingController? recorder;
 
-  const CaptureFeedback({super.key, required this.controller});
+  const CaptureFeedback({super.key, required this.controller, this.recorder});
 
   @override
   State<CaptureFeedback> createState() => _CaptureFeedbackState();
@@ -23,6 +25,7 @@ class _CaptureFeedbackState extends State<CaptureFeedback> with SingleTickerProv
     duration: const Duration(milliseconds: 220),
   );
   StreamSubscription<CaptureEvent>? _sub;
+  StreamSubscription<RecordingEvent>? _videoSub;
   Timer? _hideTimer;
   _Notice? _notice;
 
@@ -35,14 +38,29 @@ class _CaptureFeedbackState extends State<CaptureFeedback> with SingleTickerProv
   @override
   void didUpdateWidget(CaptureFeedback old) {
     super.didUpdateWidget(old);
-    if (old.controller != widget.controller) {
+    if (old.controller != widget.controller || old.recorder != widget.recorder) {
       _sub?.cancel();
+      _videoSub?.cancel();
       _subscribe();
     }
   }
 
   void _subscribe() {
     _sub = widget.controller.events.listen(_onEvent);
+    _videoSub = widget.recorder?.events.listen(_onVideoEvent);
+  }
+
+  void _onVideoEvent(RecordingEvent event) {
+    if (!mounted) return;
+    switch (event.type) {
+      case RecordingEventType.started:
+        _haptic(HapticFeedback.mediumImpact);
+      case RecordingEventType.saved:
+        _show(const _Notice(Icons.check_circle, 'Video guardado', Colors.white));
+      case RecordingEventType.failed:
+        _haptic(HapticFeedback.heavyImpact);
+        _show(const _Notice(Icons.error_outline, 'Problema con el video', Colors.orangeAccent));
+    }
   }
 
   void _onEvent(CaptureEvent event) {
@@ -74,6 +92,7 @@ class _CaptureFeedbackState extends State<CaptureFeedback> with SingleTickerProv
   @override
   void dispose() {
     _sub?.cancel();
+    _videoSub?.cancel();
     _hideTimer?.cancel();
     _flash.dispose();
     super.dispose();

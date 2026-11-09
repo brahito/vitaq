@@ -75,4 +75,15 @@ import java.nio.ByteBuffer;
         uvcCameraPlatform.handleTakenPicture(cameraId, outputFile, frame, resultHandler);
     }
 
+    /**
+     * VTQ: avisa que la foto no se tomará (la grabación terminó antes del cuadro).
+     */
+    void fail(final Exception error) {
+        if (frameCaptured) return;
+        frameCaptured = true;
+        //noinspection ResultOfMethodCallIgnored
+        outputFile.delete();
+        resultHandler.onResult(null, error);
+    }
+
 }

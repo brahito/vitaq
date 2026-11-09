@@ -218,6 +218,16 @@ class UvcCameraPlatform extends UvcCameraPlatformInterface {
   }
 
   @override
+  Future<void> pauseVideoRecording(int cameraId) async {
+    await _nativeMethodChannel.invokeMethod<void>('pauseVideoRecording', {'cameraId': cameraId});
+  }
+
+  @override
+  Future<void> resumeVideoRecording(int cameraId) async {
+    await _nativeMethodChannel.invokeMethod<void>('resumeVideoRecording', {'cameraId': cameraId});
+  }
+
+  @override
   Stream<UvcCameraDeviceEvent> get deviceEventStream {
     return _deviceEventStream ??= _deviceEventChannel.receiveBroadcastStream().map((event) {
       return UvcCameraDeviceEvent.fromMap(event);

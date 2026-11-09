@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../camera/endoscope_camera.dart';
 import '../gallery/photo.dart';
 import '../gallery/photo_repository.dart';
+import 'capture_file_name.dart';
 
 enum CaptureEventType {
   /// Se aceptó la orden y se está tomando el cuadro.
@@ -81,7 +82,7 @@ class PhotoCaptureController extends ChangeNotifier {
     String? tempPath;
     try {
       tempPath = await camera.takePicture();
-      final photo = await photos.save(tempPath, _fileName(_now()));
+      final photo = await photos.save(tempPath, captureFileName(_now(), 'jpg'));
       if (_disposed) return photo;
       _lastPhoto = photo;
       _emit(CaptureEvent(CaptureEventType.saved, photo: photo));
@@ -105,14 +106,6 @@ class PhotoCaptureController extends ChangeNotifier {
 
   void _emit(CaptureEvent event) {
     if (!_events.isClosed) _events.add(event);
-  }
-
-  /// VitaQ_20261020_143005_123.jpg
-  static String _fileName(DateTime t) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    String three(int v) => v.toString().padLeft(3, '0');
-    return 'VitaQ_${t.year}${two(t.month)}${two(t.day)}_'
-        '${two(t.hour)}${two(t.minute)}${two(t.second)}_${three(t.millisecond)}.jpg';
   }
 
   static Future<void> _deleteFile(String path) async {

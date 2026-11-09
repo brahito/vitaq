@@ -23,6 +23,7 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
   bool _requesting = false;
   bool _opening = false;
   bool _reopen = false;
+  bool _recording = false;
 
   /// Intentos seguidos de abrir la cámara que fallaron.
   int _failures = 0;
@@ -91,7 +92,8 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
 
   @override
   Future<void> reclaim() async {
-    if (_controller == null || _opening) return;
+    // Grabando, la cámara sigue siendo nuestra: reabrirla cortaría el video.
+    if (_controller == null || _opening || _recording) return;
     _closeCamera();
     _set(EndoscopeStatus.connecting);
     await _openCamera();
@@ -243,6 +245,7 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
 
   void _closeCamera() {
     _session++;
+    _recording = false; // el lado nativo cierra el MP4 al cerrar la cámara
     _buttonSub?.cancel();
     _buttonSub = null;
     _controller?.dispose();
@@ -262,6 +265,52 @@ class EndoscopeCameraAndroid extends EndoscopeCamera {
     }
     final file = await c.takePicture().timeout(_pictureTimeout);
     return file.path;
+  }
+
+  // ---------------------------------------------------------------- video
+
+  /// Tamaño del video si la cámara no informa el suyo (el endoscopio es 720x720).
+  static const _fallbackVideoSize = 720;
+  static const _recorderTimeout = Duration(seconds: 10);
+
+  UvcCameraController _streamingController() {
+    final c = _controller;
+    if (c == null || _status != EndoscopeStatus.streaming) {
+      throw StateError('El endoscopio no está transmitiendo');
+    }
+    return c;
+  }
+
+  @override
+  Future<String> startRecording() async {
+    final c = _streamingController();
+    final preview = c.value.previewMode;
+    final mode = UvcCameraMode(
+      frameWidth: preview?.frameWidth ?? _fallbackVideoSize,
+      frameHeight: preview?.frameHeight ?? _fallbackVideoSize,
+      frameFormat: preview?.frameFormat ?? UvcCameraFrameFormat.mjpeg,
+    );
+    await c.startVideoRecording(mode).timeout(_recorderTimeout);
+    final path = c.value.videoRecordingFile?.path;
+    if (path == null) throw StateError('La cámara no devolvió el archivo del video');
+    _recording = true;
+    return path;
+  }
+
+  @override
+  Future<void> pauseRecording() =>
+      _streamingController().pauseVideoRecording().timeout(_recorderTimeout);
+
+  @override
+  Future<void> resumeRecording() =>
+      _streamingController().resumeVideoRecording().timeout(_recorderTimeout);
+
+  @override
+  Future<void> stopRecording() async {
+    final c = _controller;
+    if (c == null || !_recording) throw StateError('No hay una grabación en curso');
+    _recording = false;
+    await c.stopVideoRecording().timeout(_recorderTimeout);
   }
 
   @override

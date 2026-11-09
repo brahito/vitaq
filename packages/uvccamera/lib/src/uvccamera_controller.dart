@@ -213,6 +213,28 @@ class UvcCameraController extends ValueNotifier<UvcCameraControllerState> {
     }
   }
 
+  /// VTQ: pauses the current video recording (Android 7+).
+  Future<void> pauseVideoRecording() async {
+    _ensureInitializedNotDisposed();
+
+    if (!value.isRecordingVideo) {
+      throw UvcCameraControllerIllegalStateException('UvcCameraController is not recording video');
+    }
+
+    await UvcCameraPlatformInterface.instance.pauseVideoRecording(_cameraId!);
+  }
+
+  /// VTQ: resumes a paused video recording.
+  Future<void> resumeVideoRecording() async {
+    _ensureInitializedNotDisposed();
+
+    if (!value.isRecordingVideo) {
+      throw UvcCameraControllerIllegalStateException('UvcCameraController is not recording video');
+    }
+
+    await UvcCameraPlatformInterface.instance.resumeVideoRecording(_cameraId!);
+  }
+
   /// Returns a widget showing a live camera preview.
   Widget buildPreview() {
     _ensureInitializedNotDisposed();

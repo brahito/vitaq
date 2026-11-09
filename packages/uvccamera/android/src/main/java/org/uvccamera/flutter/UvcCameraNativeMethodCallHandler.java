@@ -473,16 +473,35 @@ import io.flutter.plugin.common.MethodChannel;
                     return;
                 }
 
-                try {
-                    uvcCameraPlatform.stopVideoRecording(cameraId);
-                } catch (final Exception e) {
-                    result.error(e.getClass().getSimpleName(), e.getMessage(), null);
+                uvcCameraPlatform.stopVideoRecording(cameraId, error -> replyVideo(result, error));
+            }
+            case "pauseVideoRecording" -> {
+                final var cameraId = call.<Integer>argument("cameraId");
+                if (cameraId == null) {
+                    result.error("InvalidArgument", "cameraId is required", null);
                     return;
                 }
 
-                result.success(null);
+                uvcCameraPlatform.pauseVideoRecording(cameraId, error -> replyVideo(result, error));
+            }
+            case "resumeVideoRecording" -> {
+                final var cameraId = call.<Integer>argument("cameraId");
+                if (cameraId == null) {
+                    result.error("InvalidArgument", "cameraId is required", null);
+                    return;
+                }
+
+                uvcCameraPlatform.resumeVideoRecording(cameraId, error -> replyVideo(result, error));
             }
             default -> result.notImplemented();
+        }
+    }
+
+    private static void replyVideo(final MethodChannel.Result result, final Exception error) {
+        if (error != null) {
+            result.error(error.getClass().getSimpleName(), error.getMessage(), null);
+        } else {
+            result.success(null);
         }
     }
 
